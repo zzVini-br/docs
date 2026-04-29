@@ -1,0 +1,203 @@
+openapi: 3.0.3
+info:
+  title: Pre-docs API
+  description: |
+    API para consulta de pré-documentos de transporte (CTE).
+
+    ## Fluxo de Autenticação
+    1. Chame o endpoint `POST /login` (serviço de Auth) utilizando as mesmas credenciais de acesso da WebCOL.
+    2. Copie o token retornado.
+    3. Clique no botão **Authorize** no topo desta página e cole o token.
+    4. As requisições seguintes incluirão o header `Authorization: Bearer {token}`.
+  version: 1.0.0
+
+servers:
+  - url: https://bayer-webcol-checkfrete-api.webcol.systems
+    description: Produção (API)
+  - url: https://hml-bayer-webcol-checkfrete-api.webcol.systems
+    description: Homologação (API)
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Autenticação
+    description: Obtendo acesso via Auth Service
+  - name: Pre-docs
+    description: Consulta de pré-documentos de transporte
+
+paths:
+  /login:
+    post:
+      tags:
+        - Autenticação
+      summary: Realiza login no serviço de autenticação
+      security: []
+      servers:
+        - url: https://auth.bayer.webcol.systems
+          description: Auth Service - Produção
+        - url: https://hml-auth.bayer.webcol.systems
+          description: Auth Service - Homologação
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: "seuemail@seudominio.com.br"
+                password:
+                  type: string
+                  format: password
+                  example: "suasenhawebcol"
+              required:
+                - email
+                - password
+      responses:
+        "200":
+          description: Sucesso - Token gerado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                    example: "eyJhbGciOiJIUzI1NiIsInR5cCI..."
+        "400":
+          description: Erro de Validação (Campos obrigatórios ausentes)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComplexErrorResponse"
+              example:
+                error:
+                  type: "Validation Error"
+                  message: "E-mail obrigatório,Senha obrigatória"
+        "401":
+          description: Credenciais inválidas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComplexErrorResponse"
+              example:
+                error:
+                  type: "App Error"
+                  message: "Credenciais inválidas"
+
+  /pre-docs/xml:
+    get:
+      tags: [Pre-docs]
+      summary: Lista pré-docs em formato XML
+      description: |
+        Retorna até 50 pré-documentos do tipo XML vinculados ao CNPJ do usuário autenticado.
+        Os parâmetros `lastId`, `DT` e `lastDT` são **mutuamente exclusivos**.
+      parameters:
+        - $ref: "#/components/parameters/lastId"
+        - $ref: "#/components/parameters/DT"
+        - $ref: "#/components/parameters/lastDT"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResponseById"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /pre-docs/json:
+    get:
+      tags: [Pre-docs]
+      summary: Lista pré-docs em formato JSON
+      description: |
+        Retorna até 50 pré-documentos do tipo JSON vinculados ao CNPJ do usuário autenticado.
+        Os parâmetros `lastId`, `DT` e `lastDT` são **mutuamente exclusivos**.
+      parameters:
+        - $ref: "#/components/parameters/lastId"
+        - $ref: "#/components/parameters/DT"
+        - $ref: "#/components/parameters/lastDT"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResponseById"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    lastId:
+      name: lastId
+      in: query
+      description: Cursor de paginação por ID. Use o valor de `nextLastId` da resposta anterior.
+      schema:
+        type: integer
+      example: 100
+    DT:
+      name: DT
+      in: query
+      description: Filtra pré-docs vinculados a um número de DT específico.
+      schema:
+        type: string
+      example: "835715152"
+    lastDT:
+      name: lastDT
+      in: query
+      description: Cursor de paginação por número de DT. Use o valor de `nextLastDT` da resposta anterior.
+      schema:
+        type: string
+      example: "835715152"
+
+  schemas:
+    PreDoc:
+      type: object
+      properties:
+        id: { type: integer }
+        file_type: { type: string }
+        file_content: { type: string }
+
+    ResponseById:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/PreDoc" }
+        nextLastId: { type: integer, nullable: true }
+        nextLastDT: { type: string, nullable: true }
+
+    ComplexErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            type: { type: string }
+            message: { type: string }
+            code: { type: string }
+
+    SimpleMessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "E_INVALID_JWT_TOKEN: invalid signature"
+
+  responses:
+    Unauthorized:
+      description: Token inválido ou ausente
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/SimpleMessageResponse"
